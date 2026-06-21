@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>INFOLAB - Master</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; max-width: 850px; margin: auto; background-color: #f8f9fa; }
+        .cabecalho { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 5px; }
+        h2 { color: #212529; font-size: 18pt; margin: 0; }
+        .assinatura { font-size: 10pt; color: #6c757d; font-weight: bold; font-style: italic; }
+        p.instrucao { color: #6c757d; font-size: 10pt; margin-top: 5px; margin-bottom: 15px; }
+        textarea { width: 100%; height: 140px; margin-bottom: 10px; font-family: monospace; font-size: 11px; border: 1px solid #ced4da; border-radius: 4px; padding: 10px; box-sizing: border-box; }
+        .botoes { margin-bottom: 15px; }
+        button { padding: 10px 18px; font-weight: bold; color: white; border: none; cursor: pointer; border-radius: 4px; font-size: 11pt; margin-right: 10px; }
+        .btn-extrair { background-color: #0056b3; }
+        .btn-extrair:hover { background-color: #004494; }
+        .btn-copiar { background-color: #28a745; display: none; }
+        .btn-copiar:hover { background-color: #218838; }
+        #resultado { white-space: pre-wrap; background: #ffffff; padding: 15px; border: 1px solid #bba; min-height: 60px; margin-top: 10px; border-radius: 4px; font-family: monospace; font-size: 12pt; color: #000; line-height: 1.4; box-shadow: inset 0 1px 3px rgba(0,0,0,0.05); }
+        .notificacao { color: #28a745; font-size: 10pt; font-weight: bold; margin-top: 5px; display: none; }
+        .rodape { text-align: center; font-size: 9pt; color: #adb5bd; margin-top: 30px; border-top: 1px solid #dee2e6; padding-top: 10px; }
+    </style>
+</head>
+<body>
+
+    <div class="cabecalho">
+        <h2>INFOLAB</h2>
+        <span class="assinatura">Criado por Alencar Pereira</span>
+    </div>
+    <p class="instrucao">Cole o laudo laboratorial ou gasometria (HC-UFTM / MPU) abaixo e clique em Extrair.</p>
+    
+    <textarea id="inputTexto" placeholder="Cole o texto bruto do PDF aqui..."></textarea>
+    
+    <div class="botoes">
+        <button class="btn-extrair" onclick="extrairExames()">Extrair e Formatar</button>
+        <button id="btnCopiar" class="btn-copiar" onclick="copiarTexto()">Copiar Evolução</button>
+        <span id="notificacao" class="notificacao">Copiado para a área de transferência!</span>
+    </div>
+
+    <div id="resultado">A linha de evolução formatada aparecerá aqui...</div>
+
+    <div class="rodape">
+        INFOLAB - Extrator Cirúrgico Universal (Versão Definitiva HC/MPU)
+    </div>
+
+    <script>
+        function extrairExames() {
+            const textoOriginal = document.getElementById('inputTexto').value;
+            let texto = textoOriginal;
+            
+            // ---------------------------------------------------------
+            // 1. ISOLAMENTO BLINDADO DO EAS (ROTINA DE URINA)
+            // ---------------------------------------------------------
+            let linhaEas = "";
+            const regexEas = /(?:\bEXAME DE URINA\s*-\s*ROTINA\b|\bROTINA DE URINA\b|\bURINA ROTINA\b|\bEAS\b)[\s\S]{0,3500}?(?:Resultado liberado[^\n]*|M[ÉE]TODO:[^\n]*|Amostra recepcionada[^\n]*|Liberado em:[^\n]*)/gi;
+            const easMatches = texto.match(regexEas);
+            
+            if (easMatches && easMatches.length > 0) {
+                const easText = easMatches[0];
+                // ANIQUILAÇÃO: Remove a Urina do texto base para não contaminar Sangue e Gasometria
+                texto = texto.replace(regexEas, "");
+
+                const valEasSingle = (reg) => { 
+                    const m = easText.match(reg); 
+                    if(!m) return "";
+                    let v = m[1].trim().split(/\s+/)[0];
+                    return v.replace(/NEGATIVOS?/i, "Neg")
+                            .replace(/POSITIVOS?/i, "Pos")
+                            .replace(/AUSENTES?/i, "Aus")
+                            .replace(/PRESENTES?/i, "Pres")
+                            .replace(/FREQUENTES?/i, "Freq")
+                            .replace(/RARAS?/i, "Raras")
+                            .replace(/AUMENTADA/i, "Aumentada")
+                            .replace(/NORMAL/i, "Normal");
+                };
+                
+                let cor = valEasSingle(/COR:\s*([^\s]+)/i);
+                if(cor) cor = cor.charAt(0).toUpperCase() + cor.toLowerCase().slice(1);
+
+                let aspecto = "";
+                const aspectoMatch = easText.match(/ASPECTO:\s*([^\n]+)/i);
+                if (aspectoMatch) {
+                    let str = aspectoMatch[1].trim().toUpperCase();
+                    if (str.includes("SEMI TURVO") || str.includes("SEMITURVO")) aspecto = "Semi-Turvo";
+                    else if (str.includes("LIGEIRAMENTE TURVO")) aspecto = "Lig-Turvo";
+                    else if (str.includes("TURVO")) aspecto = "Turvo";
+                    else aspecto = "Límpido";
+                }
+
+                const den = valEasSingle(/DENSIDADE:\s*([^\s]+)/i);
+                const phEas = valEasSingle(/(?:REA[CÇ][ÃA]O\s*)?PH:\s*([^\s]+)/i);
+                const nit = valEasSingle(/NITRITOS?:\s*([^\s]+)/i);
+                const prot = valEasSingle(/PROTE[ÍI]NAS:\s*([^\s]+)/i);
+                const glic = valEasSingle(/GLICOSE:\s*([^\s]+)/i);
+                const cet = valEasSingle(/CORPOS CET[ÔO]NICOS:\s*([^\s]+)/i);
+                const uro = valEasSingle(/UROBILINOG[ÊE]NIO:\s*([^\s]+)/i);
+                const biliEas = valEasSingle(/BILIRRUBINA:\s*([^\s]+)/i);
+                const hbEas = valEasSingle(/HEMOGLOBINA:\s*([^\s]+)/i);
+                const leucoEas = valEasSingle(/LEUC[ÓO]CITOS:\s*([\d,.]+)/i);
+                const hemacEas = valEasSingle(/HEM[ÁA]CIAS:\s*([\d,.]+)/i);
+                const epi = valEasSingle(/C[Ée]LULAS EPITELIAIS:\s*([^\s]+)/i);
+                const muco = valEasSingle(/(?:FILAMENTOS DE )?MUCO(?: E FILAMENTO)?:\s*([^\s]+)/i);
+                const cil = valEasSingle(/CILINDROS:\s*([^\s]+)/i);
+                const flora = valEasSingle(/FLORA MICROBIANA:\s*([^\s]+)/i);
+                const cris = valEasSingle(/CRISTAIS:\s*([^\s]+)/i);
+
+                let camposEas = [];
+                if(cor) camposEas.push(`Cor ${cor}`);
+                if(aspecto) camposEas.push(`Aspecto ${aspecto}`);
+                if(den) camposEas.push(`Den ${den}`);
+                if(phEas) camposEas.push(`pH ${phEas}`);
+                if(nit) camposEas.push(`Nitrito ${nit}`);
+                if(prot) camposEas.push(`Prot ${prot}`);
+                if(glic) camposEas.push(`Glic ${glic}`);
+                if(cet) camposEas.push(`Cet ${cet}`);
+                if(uro) camposEas.push(`Uro ${uro}`);
+                if(biliEas) camposEas.push(`Bili ${biliEas}`);
+                if(hbEas) camposEas.push(`Hb ${hbEas}`);
+                if(leucoEas) camposEas.push(`Leuco ${leucoEas}`);
+                if(hemacEas) camposEas.push(`Hemácias ${hemacEas}`);
+                if(epi) camposEas.push(`Epitélio ${epi}`);
+                if(muco) camposEas.push(`Muco ${muco}`);
+                if(cil) camposEas.push(`Cilindros ${cil}`);
+                if(flora) camposEas.push(`Flora ${flora}`);
+                if(cris) camposEas.push(`Cristais ${cris}`);
+
+                if(camposEas.length > 0) {
+                    linhaEas = "EAS: " + camposEas.join(", ");
+                }
+            }
+
+            // ---------------------------------------------------------
+            // 2. PURIFICADOR: Limpa valores de referência conhecidos
+            // ---------------------------------------------------------
+            texto = texto.replace(/\b1,20\s*mg\/dL/gi, "")
+                         .replace(/\b0,50\s*mg\/dL/gi, "")
+                         .replace(/\b0,70\s*mg\/dL/gi, "")
+                         .replace(/\b9,0\s*ng\/L/gi, "")
+                         .replace(/\b16,8\s*ng\/L/gi, "");
+
+            const obterValor = (regex) => {
+                const match = texto.match(regex);
+                return match ? match[1].trim() : "";
+            };
+
+            // ÂNCORA: Função robusta que só aceita números se a unidade estiver próxima
+            const obterComUnidade = (nome, unidade, maxDist = 200) => {
+                let regex = new RegExp(nome + "[\\s\\S]{0," + maxDist + "}?(?:Resultado\\s*:|:)?[\\s\\S]{0," + maxDist + "}?\\b(\\d+(?:,\\d+)?)\\s*(?:" + unidade + ")", "i");
+                let match = texto.match(regex);
+                if (match) return match[1].trim();
+
+                // Fallback de segurança (ignora datas graças ao (?!\\s*\\/))
+                regex = new RegExp(nome + "[\\s\\S]{0,150}?(?:Resultado\\s*:|:)[\\s\\S]{0,50}?\\b(\\d+(?:,\\d+)?)\\b(?!\\s*\\/)", "i");
+                match = texto.match(regex);
+                return match ? match[1].trim() : "";
+            };
+
+            // ---------------------------------------------------------
+            // 3. IDENTIFICAÇÃO BÁSICA
+            // ---------------------------------------------------------
+            let nomePaciente = "NOME NÃO ENCONTRADO";
+            const nomeMP = texto.match(/Nome:\s*\d+\s*-\s*(.*?)\s*Pedido:/i);
+            if (nomeMP) {
+                nomePaciente = nomeMP[1].trim();
+            } else {
+                const sexoMatch = texto.match(/\n\s*([MF])\s*\n/);
+                if (sexoMatch) {
+                    const idx = texto.indexOf(sexoMatch[0]);
+                    const blocoAnterior = texto.substring(0, idx).trim();
+                    const linhas = blocoAnterior.split('\n');
+                    if (linhas.length > 0) nomePaciente = linhas[linhas.length - 1].trim();
+                }
+            }
+            
+            let dataColeta = obterValor(/Coletado em\s*([\d/]+)/i) || obterValor(/Amostra recepcionada:\s*([\d/]+)/i) || "DATA?";
+
+            // ---------------------------------------------------------
+            // 4. HEMOGRAMA (Obrigatório vir isolado do EAS)
+            // ---------------------------------------------------------
+            const hb = obterValor(/Hemoglobina\s*(?:\.+)?\s*:\s*([\d,.]+)/i);
+            const ht = obterValor(/Hemat[óo]crito\s*(?:\.+)?\s*:\s*([\d,.]+)/i);
+            const leuco = obterValor(/Leuc[óo]citos\s*(?:\.+)?\s*:\s*([\d,.]+)/i);
+            
+            let plaq = obterValor(/Plaquetas\s*(?:\.+)?\s*:\s*([\d,.]+)/i);
+            if (plaq) {
+                let valorPuro = parseInt(plaq.replace(/\./g, ''));
+                if (!isNaN(valorPuro) && valorPuro < 1000) plaq = plaq + ".000";
+            }
+            
+            const seg = obterValor(/Segmentados\s*(?:\.+)?\s*:\s*([\d,.]+)/i);
+            const linf = obterValor(/Linf[óo]citos\s*(?:\.+)?\s*:\s*([\d,.]+)/i);
+            const bast = obterValor(/Bastonetes\s*(?:\.+)?\s*:\s*([\d,.]+)/i);
+
+            // ---------------------------------------------------------
+            // 5. BIOQUÍMICA ROTINA
+            // ---------------------------------------------------------
+            const ur = obterComUnidade("Ureia", "mg\\/dL|g\\/L");
+            const cr = obterComUnidade("Creatinina", "mg\\/dL");
+            const na = obterComUnidade("S[óo]dio(?:\\s*s[ée]rico)?", "mmol\\/L|mEq\\/L");
+            const k = obterComUnidade("Pot[áa]ssio(?:\\s*s[ée]rico)?", "mmol\\/L|mEq\\/L");
+            const ca = obterComUnidade("C[áa]lcio(?:\\s*total)?", "mg\\/dL");
+            const p = obterComUnidade("F[óo]sforo(?:\\s*s[ée]rico)?", "mg\\/dL");
+            const mg = obterComUnidade("Magn[ée]sio", "mg\\/dL");
+            const pcr = obterComUnidade("Prote[íi]na\\s*C\\s*Reativa", "mg\\/dL|mg\\/L", 400); // Distância maior pois o HC polui com exames anteriores
+
+            // ---------------------------------------------------------
+            // 6. ENZIMAS, PANCREÁTICO, LIPÍDIOS
+            // ---------------------------------------------------------
+            const tgo = obterComUnidade("TGO", "U\\/L");
+            const tgp = obterComUnidade("TGP", "U\\/L");
+            const fa = obterComUnidade("Fosfatase\\s*Alcalina", "U\\/L");
+            const ggt = obterComUnidade("(?:Gama\\s*GT|Gama\\s*Glutamil)", "U\\/L");
+            const amilase = obterComUnidade("Amilase", "U\\/L");
+            const lipase = obterComUnidade("Lipase", "U\\/L");
+            const cpk = obterComUnidade("(?:Creatinofosfoquinase|CPK)", "U\\/L");
+            const tg = obterComUnidade("Triglicer[íi]deos", "mg\\/dL");
+            const tropo = obterComUnidade("Troponina", "ng\\/L|ng\\/mL|pg\\/mL|ug\\/L", 150);
+
+            // ---------------------------------------------------------
+            // 7. BILIRRUBINAS (Agora tolerantes ao HC e MPU)
+            // ---------------------------------------------------------
+            const bt = obterComUnidade("(?:Bilirrubina\\s*Total|TOTAL)", "mg\\/dL", 150);
+            const bd = obterComUnidade("(?:Bilirrubina\\s*Direta|DIRETA)", "mg\\/dL", 150);
+            const bi = obterComUnidade("(?:Bilirrubina\\s*Indireta|INDIRETA)", "mg\\/dL", 150);
+
+            // ---------------------------------------------------------
+            // 8. COAGULOGRAMA
+            // ---------------------------------------------------------
+            const inr = obterValor(/\bI\.?N\.?R\.?:?\s*([\d,.]+)/i);
+            const ttpa = obterValor(/(?:RELA[CÇ][AÃ]O PACIENTE\/(?:CONTROLE|NORMAL))\s*:\s*([\d,.]+)/i);
+
+            // ---------------------------------------------------------
+            // 9. GASOMETRIA E LACTATO
+            // ---------------------------------------------------------
+            const ph = obterValor(/\bpH\b[\s\S]{0,80}?(?:Resultado\s*:|:)\s*([\d,.]+)/i);
+            const pco2 = obterValor(/\bpCO2\b[\s\S]{0,80}?(?:Resultado\s*:|:)\s*([\d,.]+)/i);
+            const po2 = obterValor(/\bpO2\b[\s\S]{0,80}?(?:Resultado\s*:|:)\s*([\d,.]+)/i);
+            const hco3 = obterValor(/\b(?:HCO3|Bicarbonato)\b[\s\S]{0,80}?(?:Resultado\s*:|:)\s*([\d,.]+)/i);
+            const be = obterValor(/\b(?:BE|Base Excess|Excesso de Base)\b[\s\S]{0,80}?(?:Resultado\s*:|:)\s*([+-\d,.]+)/i);
+            const sato2 = obterValor(/\b(?:SO2|SatO2|Satura[çc][ãa]o)\b[\s\S]{0,80}?(?:Resultado\s*:|:)\s*([\d,.]+)/i);
+            const lactato = obterValor(/\b(?:Lactato|[ÁA]cido L[áa]tico)\b[\s\S]{0,80}?(?:Resultado\s*:|:)\s*([\d,.]+)/i);
+            const cai = obterValor(/\bC[áa]lcio\s*I[ôo]nico\b[\s\S]{0,80}?(?:Resultado\s*:|:)\s*([\d,.]+)/i);
+
+            // ---------------------------------------------------------
+            // MONTAGEM DO RESULTADO FINAL
+            // ---------------------------------------------------------
+            
+            // LINHA 1: SANGUE PRINCIPAL
+            let linhaExames = "";
+            if (hb)   linhaExames += `Hb ${hb} `;
+            if (ht)   linhaExames += `Ht ${ht} `;
+            if (leuco) {
+                linhaExames += `Leuco ${leuco}`;
+                if (seg || linf || bast) linhaExames += ` (S${seg || 0}% L${linf || 0}% B${bast || 0}%)`;
+                linhaExames += ` `;
+            }
+            if (plaq)  linhaExames += `Plaq: ${plaq} `;
+            if (cr)    linhaExames += `Cr ${cr} `;
+            if (ur)    linhaExames += `Ur ${ur} `;
+            if (na)    linhaExames += `Na ${na} `;
+            if (k)     linhaExames += `K ${k} `;
+            if (ca)    linhaExames += `Ca ${ca} `;
+            if (p)     linhaExames += `P ${p} `;
+            if (mg)    linhaExames += `Mg ${mg} `;
+            
+            if (tgo)     linhaExames += `TGO ${tgo} `;
+            if (tgp)     linhaExames += `TGP ${tgp} `;
+            if (fa)      linhaExames += `FA ${fa} `;
+            if (ggt)     linhaExames += `GGT ${ggt} `;
+            if (bt)      linhaExames += `BT ${bt} `;
+            if (bd)      linhaExames += `BD ${bd} `;
+            if (bi)      linhaExames += `BI ${bi} `;
+            if (cpk)     linhaExames += `CPK ${cpk} `;
+            if (amilase) linhaExames += `Amilase ${amilase} `;
+            if (lipase)  linhaExames += `Lipase ${lipase} `;
+            if (tg)      linhaExames += `TG ${tg} `;
+            if (tropo)   linhaExames += `Tropo ${tropo} `;
+            
+            if (pcr)   linhaExames += `PCR ${pcr} `;
+            if (inr)   linhaExames += `INR ${inr} `;
+            if (ttpa)  linhaExames += `TTPA(R) ${ttpa} `;
+
+            // LINHA 2: GASOMETRIA
+            let linhaGaso = "";
+            if (pco2 || po2 || hco3 || be || sato2 || lactato || cai) {
+                linhaGaso += `Gaso: `;
+                if (ph) linhaGaso += `pH ${ph} `;
+                if (pco2) linhaGaso += `pCO2 ${pco2} `;
+                if (po2) linhaGaso += `pO2 ${po2} `;
+                if (hco3) linhaGaso += `HCO3 ${hco3} `;
+                if (be) linhaGaso += `BE ${be} `;
+                if (sato2) linhaGaso += `SatO2 ${sato2}% `;
+                if (lactato) linhaGaso += `Lac ${lactato} `;
+                if (cai) linhaGaso += `CaI ${cai}`;
+            }
+
+            // ORGANIZAÇÃO DOS BLOCOS
+            let blocos = [];
+            if (linhaExames.trim()) blocos.push(linhaExames.trim().replace(/\s+/g, ' '));
+            if (linhaGaso.trim()) blocos.push(linhaGaso.trim().replace(/\s+/g, ' '));
+            if (linhaEas.trim()) blocos.push(linhaEas.trim().replace(/\s+/g, ' '));
+
+            let resultadoFinal = `${nomePaciente}\n`;
+            if (blocos.length > 0) {
+                resultadoFinal += `${dataColeta}: ${blocos[0]}`;
+                for (let i = 1; i < blocos.length; i++) {
+                    resultadoFinal += `\n${blocos[i]}`;
+                }
+            } else {
+                resultadoFinal += `${dataColeta}: Nenhum exame padrão reconhecido.`;
+            }
+
+            document.getElementById('resultado').innerText = resultadoFinal;
+            document.getElementById('btnCopiar').style.display = 'inline-block';
+            document.getElementById('notificacao').style.display = 'none';
+        }
+
+        function copiarTexto() {
+            const texto = document.getElementById('resultado').innerText;
+            navigator.clipboard.writeText(texto).then(() => {
+                const notif = document.getElementById('notificacao');
+                notif.style.display = 'inline';
+                setTimeout(() => { notif.style.display = 'none'; }, 2500);
+            });
+        }
+    </script>
+
+</body>
+</html>
